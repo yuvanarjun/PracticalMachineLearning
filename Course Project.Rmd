@@ -1,0 +1,131 @@
+Practical Machine Learning Course Project
+========================================================
+
+This report is a part of the project for the Practical Machine Learnign course of the Data Science Specialization offered by the Jonhs Hopkins University.
+
+Overview and Objectives
+--------------------------
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, we use this data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in the following ways:
+
+A - exactly according to the specification;
+B - throwing the elbows to the front;
+C - lifting the dumbbell only halfway;
+D - lowering the dumbbell only halfway; and
+E - throwing the hips to the front
+
+Reference: http://groupware.les.inf.puc-rio.br/har
+
+The primary objective is to develop a robust machine-learning algorithm that correctly classifies (as A,B,C,etc...) the quality of barbell bicep curls based on the data from belt, forearm, arm, and dumbbell monitors that the respondents wore while performing the curls.
+
+Data sources:
+Training data - https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv <br/> 
+Testing data - 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+Initializing Data
+------------------
+
+```{r, warning=FALSE}
+#Loading required packages for this project
+library(caret) 
+library(rattle)
+library(randomForest)
+```
+
+```{r,cache=TRUE}
+#Obtaining the required data and storing it in the memory and defining NA's
+trainingData <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"),na.strings=c("NA","#DIV/0!",""))
+testingData <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"),na.strings=c("NA","#DIV/0!",""))
+```
+
+```{r}
+str(trainingData) # Taking a look at the structure of the variables
+```
+
+Cleaning Data
+--------------
+
+We see that there are 19622 observations in the dataset and 160 variables. However, there seem to be a lot of missing observations in the many of the variables which need to be adjusted or removed before fitting a model. To that end, the data needs to be cleaned before further processing.
+
+Three cleaning procedures have been adopted. The training dataset is cleaned to remove the variables that have near zero variance (i.e., almost a constant) and those who have more than 60% missing values were removed in order to ensure smooth model building and prediction capacity. Finally, looking at the data, we need to manually remove those variables that seem irrelevant to building a maching learning algorithm.
+
+
+```{r, cache=TRUE}
+# Removing the first column that contains the ID for sake of analysis
+trainingData <- trainingData[-1]
+
+#Removing those variables which are nearly a constant, i.e, which have low predictive power
+NZV <- nearZeroVar(trainingData, saveMetrics=TRUE)
+trainingData <- trainingData[!NZV$nzv]
+
+#Removing missing variables that are greater than 60%
+fractionNA <- apply(trainingData,2,function(x) {sum(is.na(x))/nrow(trainingData)})
+trainingData <- trainingData[,which(fractionNA < 0.6)]
+trainingData <- trainingData[,-c(1:5)] # removing irrelevant variables
+```
+
+
+Once the data is cleaned, we shall create partition in the dataset to split them into training and cross-validation sets for our model building exercise.
+
+```{r}
+set.seed(14452)
+inTrain <- createDataPartition(trainingData$classe, p = 0.60,list=FALSE)
+myTraining <- trainingData[inTrain, ]
+myCV <- trainingData[-inTrain, ] #Creating cross-validation data set
+
+testingData <- testingData[, names(myTraining)[-length(myTraining)]] #Excluding classe
+```
+
+Upon splitting the data in two constituent parts, we can subset the testing data using those column names that are relevant in the training data set. We do this to ensure consistency and for error-less prediction in the later sections.
+
+
+Model Training and Cross-Validation
+------------------------------------
+
+Now, we shall train the model using the training set we have created using a Random Forest process and in a 5-fold cross validation setting.
+
+Using this trained model we shall test the accuracy of the model using our cross-validation set.
+
+```{r, cache=TRUE}
+set.seed(14452)
+modFit <- randomForest(myTraining$classe ~., method="rf", data=myTraining[,-53], trControl=trainControl(method='cv', number=5), allowParallel=TRUE)
+print(modFit)
+
+#Checking the accuracy in the cross-validation set
+CVPred = predict(modFit, myCV[,-53])
+confusionMatrix(CVPred, myCV$classe)
+```
+
+The high CV accuracy using the cross-validation set of roughly 99.5% ensures that the model is good and has very good predictive power. Therefore, the out-of-sample error is also expected to be very low, probably below 5%. 
+
+
+Results
+--------
+
+Using the trained model, in this section we shall predict the test cases using the testing dataset that we had downloaded earlier.
+
+```{r, echo=TRUE}
+#Predicting classe on the test set
+testingPred <- predict(modFit, testingData)
+testingPred
+```
+
+The predictions is also saved in the working directory using the code below:
+
+```{r}
+pml_write_files = function(x){ n = length(x)
+for(i in 1:n){
+     filename = paste0("problem_id_",i,".txt")
+     write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+   }
+ }
+ pml_write_files(testingPred)
+```
+
+
+
+
